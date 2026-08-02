@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# Apply the power settings this host previously got from TLP, by writing sysfs directly.
+#
+# TLP is a Perl program that also requires usbutils, which requires python3 -- together
+# with hwdata and groff-base that is roughly 80 MB of interpreters on an image that
+# otherwise has none. Every setting below is a sysfs write TLP was making anyway, so the
+# dependency bought nothing here.
+#
+# Deliberately NOT carried over from the old tlp.d config:
+#   SCHED_POWERSAVE_ON_AC  - targets sched_mc_power_savings, removed from the kernel years ago
+#   DISK_IOSCHED="keep"    - means "change nothing"
+#   WOL_DISABLE            - Wake-on-LAN only matters for a machine that sleeps, and
+#                            sleep/suspend/hibernate targets are masked on this host
+#   NMI_WATCHDOG           - now a sysctl, see /usr/lib/sysctl.d/91-power.conf
+#
+# Note this runs once at boot, so devices hotplugged later keep kernel defaults. That is
+# fine for a server with fixed hardware; TLP used udev rules to catch hotplug.
+
+# No "set -e": a knob missing on this CPU or GPU is normal and must not stop the rest.
+set -uo pipefail
+
+# USB devices to leave powered on, as vendor:product. Autosuspending a serial adapter or a
+# remote-console device breaks it in ways that look like flaky hardware rather than a power
+# setting, so these are opt-out rather than opt-in.
+USB_KEEP_ON=(
+    "10c4:ea60"   # Sonoff Zigbee 3.0 USB Dongle Plus (Silicon Labs CP210x)
+    "3346:1009"   # Sipeed NanoKVM -- suspending it would break the remote console
+)
+
+applied=0
+skipped=0
+
+write() {
+    local value="$1" path="$2"
+    if [ ! -e "$path" ]; then
+        skipped=$((skipped + 1))
+        return 0
+    fi
+    # The subshell matters: a failing redirect is reported by the shell itself, and only
+    # redirecting the whole construct suppresses that duplicate alongside our own message.
+    if ( printf '%s\n' "$value" > "$path" ) 2>/dev/null; then
+        applied=$((applied + 1))
+    else
+        printf 'warning: could not write %s to %s\n' "$value" "$path" >&2
+    fi
+}
+
+# --- CPU: governor and energy/performance preference -------------------------------
+# Replaces CPU_SCALING_GOVERNOR_ON_AC=powersave and CPU_ENERGY_PERF_POLICY_ON_AC=power.
+for f in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+    write powersave "$f"
+done
+for f in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do
+    write power "$f"
+done
+
+# --- CPU: intel_pstate scaling window and boost -------------------------------------
+# Replaces CPU_MIN_PERF_ON_AC=20, CPU_MAX_PERF_ON_AC=100, CPU_BOOST_ON_AC=1,
+# CPU_HWP_DYN_BOOST_ON_AC=1. no_turbo=0 is how "boost on" is expressed for intel_pstate.
+write 20  /sys/devices/system/cpu/intel_pstate/min_perf_pct
+write 100 /sys/devices/system/cpu/intel_pstate/max_perf_pct
+write 0   /sys/devices/system/cpu/intel_pstate/no_turbo
+write 1   /sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost
+
+# --- Intel GPU frequency caps -------------------------------------------------------
+# Replaces INTEL_GPU_{MIN,MAX,BOOST}_FREQ_ON_AC. min goes first: it is below any plausible
+# current max, so it cannot be rejected for inverting the range.
+# This caps the iGPU at 750 MHz, which also throttles hardware transcode and ML inference.
+# That is the deliberate power-over-throughput trade-off; raise gt_max_freq_mhz to undo it.
+for f in /sys/class/drm/card*/gt_min_freq_mhz;   do write 200 "$f"; done
+for f in /sys/class/drm/card*/gt_max_freq_mhz;   do write 750 "$f"; done
+for f in /sys/class/drm/card*/gt_boost_freq_mhz; do write 750 "$f"; done
+
+# --- PCIe ASPM ----------------------------------------------------------------------
+# Replaces PCIE_ASPM_ON_AC=powersupersave. Confirmed runtime-writable on this host.
+write powersupersave /sys/module/pcie_aspm/parameters/policy
+
+# --- Runtime power management for PCI devices ---------------------------------------
+# Replaces RUNTIME_PM_ON_AC=auto, which also covers AHCI_RUNTIME_PM_ON_AC.
+for f in /sys/bus/pci/devices/*/power/control; do
+    write auto "$f"
+done
+
+# --- USB autosuspend ----------------------------------------------------------------
+# Replaces USB_AUTOSUSPEND=1 plus the USB_DENYLIST entry. Interfaces (1-1:1.0) have no
+# idVendor, so this loop naturally considers only whole devices.
+for dev in /sys/bus/usb/devices/*; do
+    [ -e "$dev/idVendor" ] && [ -e "$dev/idProduct" ] || continue
+    id="$(cat "$dev/idVendor" 2>/dev/null):$(cat "$dev/idProduct" 2>/dev/null)"
+
+    keep_on=0
+    for want in "${USB_KEEP_ON[@]}"; do
+        [ "$id" = "$want" ] && keep_on=1
+    done
+
+    if [ "$keep_on" -eq 1 ]; then
+        # Explicitly "on" rather than merely skipped, so the device cannot be suspended
+        # even if the kernel default changes.
+        write on "$dev/power/control"
+    else
+        write auto "$dev/power/control"
+    fi
+done
+
+printf 'power tuning applied: %d settings written, %d knobs not present on this hardware\n' \
+    "$applied" "$skipped"

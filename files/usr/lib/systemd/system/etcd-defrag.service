@@ -1,0 +1,14 @@
+[Unit]
+Description=Defragment the k0s etcd datastore
+Documentation=https://etcd.io/docs/latest/op-guide/maintenance/
+After=k0scontroller.service
+Requisite=k0scontroller.service
+# Skip quietly on a first boot where k0s has not yet laid down its PKI.
+ConditionPathExists=/var/lib/k0s/pki/apiserver-etcd-client.crt
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/etcdctl defrag --command-timeout=120s \
+  --cert=/var/lib/k0s/pki/apiserver-etcd-client.crt \
+  --key=/var/lib/k0s/pki/apiserver-etcd-client.key \
+  --insecure-skip-tls-verify=true

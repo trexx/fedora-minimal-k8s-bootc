@@ -1,0 +1,13 @@
+# Upstream CRI-O, pinned to the stream matching the Kubernetes version k0s bundles.
+# Fedora 44 ships cri-o 1.32, which is four minors behind Kubernetes 1.36.3 -- outside the
+# skew upstream supports. Version ordering does the selection: 1.36.x here beats Fedora's
+# 1.32, so no priority or exclude is needed.
+#
+# Bump the two v1.36 path components in lockstep whenever k0s moves to a new Kubernetes
+# minor, otherwise this silently pins cri-o to an increasingly old stream.
+[cri-o]
+name=CRI-O
+baseurl=https://download.opensuse.org/repositories/isv:/cri-o:/stable:/v1.36/rpm/
+enabled=1
+gpgcheck=1
+gpgkey=https://download.opensuse.org/repositories/isv:/cri-o:/stable:/v1.36/rpm/repodata/repomd.xml.key

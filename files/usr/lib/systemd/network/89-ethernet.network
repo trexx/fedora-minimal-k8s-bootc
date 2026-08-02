@@ -1,0 +1,8 @@
+# Match only real ethernet devices. Kind=!* excludes virtual interfaces, which
+# matters here because Cilium creates a lot of them (cilium_net, lxc*).
+[Match]
+Kind=!*
+Type=ether
+
+[Network]
+DHCP=yes

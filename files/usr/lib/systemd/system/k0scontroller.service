@@ -1,0 +1,22 @@
+[Unit]
+Description=k0s - Zero Friction Kubernetes
+Documentation=https://docs.k0sproject.io
+ConditionFileIsExecutable=/usr/bin/k0s
+After=network-online.target crio.service
+Wants=network-online.target crio.service
+
+[Service]
+StartLimitInterval=5
+StartLimitBurst=10
+ExecStart=/usr/bin/k0s controller --single=true --disable-components=control-api,coredns,endpoint-reconciler,helm,konnectivity-server,kube-proxy,metrics-server,network-provider,node-role --enable-dynamic-config=false --cri-socket=remote:unix:///var/run/crio/crio.sock --profile crio-cgroup-systemd
+RestartSec=120
+Delegate=yes
+KillMode=process
+LimitCORE=infinity
+TasksMax=infinity
+TimeoutStartSec=0
+LimitNOFILE=999999
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,60 @@
+[customizations.installer.modules]
+enable = [
+    "org.fedoraproject.Anaconda.Modules.Localization",
+    "org.fedoraproject.Anaconda.Modules.Network",
+    "org.fedoraproject.Anaconda.Modules.Payloads",
+    "org.fedoraproject.Anaconda.Modules.Runtime",
+    "org.fedoraproject.Anaconda.Modules.Security",
+    "org.fedoraproject.Anaconda.Modules.Services",
+    "org.fedoraproject.Anaconda.Modules.Storage",
+    "org.fedoraproject.Anaconda.Modules.Subscription",
+    "org.fedoraproject.Anaconda.Modules.Timezone",
+    "org.fedoraproject.Anaconda.Modules.Users",
+]
+
+# Kernel arguments deliberately live in files/usr/lib/bootc/kargs.d/10-server.toml rather
+# than a [customizations.kernel] block here. Arguments set at ISO install time apply only
+# to that install; kargs.d is part of the image, so it also applies on every bootc upgrade.
+
+[customizations.installer.kickstart]
+contents = """
+graphical
+reboot --eject
+
+keyboard --vckeymap=gb --xlayouts='gb'
+lang en_GB.UTF-8
+timezone Europe/Copenhagen
+
+ostreecontainer --url=ghcr.io/trexx/fedora-minimal-bootc:chunked
+
+# No "firewall" line: firewalld is not in the minimal manifest, so there is nothing to
+# disable. No "services" line either -- every unit this host needs is enabled in the image.
+
+# Storage: one LUKS2 container holding the VG, so /var and /data are both encrypted behind
+# a single unlock. / stays outside it, since it holds the OS image (a public container)
+# while the secrets live in /var/lib/k0s.
+#
+#   /      20G  -- ostree keeps the current and previous deployment plus staging space
+#   /var  200G  -- container graphroot, /var/lib/k0s (etcd), journal
+#   /data rest  -- host-provisioned PVC storage
+#
+# --passphrase is intentionally omitted so Anaconda prompts during the interactive install.
+# Do not hardcode one here; this file is in version control.
+ignoredisk --only-use=nvme0n1
+clearpart --all --initlabel --drives=nvme0n1
+
+part /boot/efi --fstype=efi --ondisk=nvme0n1 --size=600 --fsoptions="umask=0077,shortname=winnt"
+part /boot --fstype=xfs --ondisk=nvme0n1 --size=1024
+part pv.01 --fstype=lvmpv --ondisk=nvme0n1 --size=1 --grow --encrypted --luks-version=luks2
+
+volgroup fedora pv.01
+logvol / --vgname=fedora --name=root --fstype=xfs --size=20480
+logvol /var --vgname=fedora --name=var --fstype=xfs --size=204800
+logvol /data --vgname=fedora --name=data --fstype=xfs --size=1 --grow
+
+# Root has no password: access is by key over dropbear, which reads ~/.ssh/authorized_keys
+# the same way OpenSSH does. REPLACE THE KEY BELOW BEFORE BUILDING AN ISO -- with the
+# placeholder in place the installed host is unreachable.
+rootpw --lock
+sshkey --username=root "ssh-ed25519 AAAA_REPLACE_WITH_YOUR_PUBLIC_KEY"
+"""

@@ -1,0 +1,12 @@
+[Unit]
+Description=Weekly k0s etcd defragmentation
+
+[Timer]
+# Defrag blocks etcd writes while it runs, and this is a single-node cluster with
+# no peer to serve reads -- so run it when nothing is watching.
+OnCalendar=Sun 03:00
+RandomizedDelaySec=30m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

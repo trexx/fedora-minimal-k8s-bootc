@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# Report NVMe health to the journal, and exit non-zero on anything alarming.
+#
+# Replaces smartd. smartmontools pulls smartmontools-selinux via a rich dependency
+# ("if selinux-policy-targeted"), which drags policycoreutils-python-utils and ~55 MB of
+# Python into an image that otherwise has none. This box is NVMe-only, so nvme-cli covers
+# it -- and smartd's default alerting mails root, which goes nowhere without an MTA.
+
+set -euo pipefail
+
+rc=0
+
+# $1 = smart-log output, $2 = field name. Anchored on the colon so that "available_spare"
+# does not also match "available_spare_threshold".
+#
+# Takes the FIRST integer after the colon, not every digit on the line: temperature prints
+# as "35 °C (308 K)", so stripping non-digits wholesale yields 35308.
+#
+# The trailing "|| true" matters under "set -euo pipefail" -- a field missing from this
+# drive's output would otherwise fail the pipeline and abort the run. Empty results are
+# handled by the callers.
+field() {
+    printf '%s\n' "$1" | grep -m1 -E "^${2}[[:space:]]*:" | cut -d: -f2- | grep -oE '[0-9]+' | head -1 || true
+}
+
+shopt -s nullglob
+found=0
+
+for dev in /dev/nvme*; do
+    # Controller nodes only (/dev/nvme0), not namespaces (/dev/nvme0n1).
+    [[ "$dev" =~ ^/dev/nvme[0-9]+$ ]] || continue
+    found=1
+
+    if ! log=$(nvme smart-log "$dev" 2>&1); then
+        printf 'ERROR %s: nvme smart-log failed: %s\n' "$dev" "$log"
+        rc=1
+        continue
+    fi
+
+    warn=$(field "$log" critical_warning)
+    used=$(field "$log" percentage_used)
+    spare=$(field "$log" available_spare)
+    thresh=$(field "$log" available_spare_threshold)
+    media=$(field "$log" media_errors)
+    temp=$(field "$log" temperature)
+
+    printf '%s: temp=%sC endurance_used=%s%% spare=%s%% (min %s%%) media_errors=%s critical_warning=%s\n' \
+        "$dev" "${temp:-?}" "${used:-?}" "${spare:-?}" "${thresh:-?}" "${media:-?}" "${warn:-?}"
+
+    # critical_warning is a bitfield: spare low, temperature threshold exceeded, degraded
+    # reliability, media read-only, volatile memory backup failed. Any bit set is bad.
+    if [[ -n "$warn" && "$warn" -ne 0 ]]; then
+        printf 'CRITICAL %s: controller reports critical_warning=%s\n' "$dev" "$warn"
+        rc=1
+    fi
+
+    if [[ -n "$spare" && -n "$thresh" && "$spare" -lt "$thresh" ]]; then
+        printf 'CRITICAL %s: available spare %s%% is below the %s%% threshold\n' "$dev" "$spare" "$thresh"
+        rc=1
+    fi
+
+    if [[ -n "$used" && "$used" -ge 90 ]]; then
+        printf 'WARNING %s: %s%% of rated endurance consumed\n' "$dev" "$used"
+    fi
+
+    if [[ -n "$media" && "$media" -ne 0 ]]; then
+        printf 'WARNING %s: %s media errors recorded\n' "$dev" "$media"
+    fi
+done
+
+if [[ "$found" -eq 0 ]]; then
+    echo "No NVMe controllers found."
+fi
+
+exit "$rc"

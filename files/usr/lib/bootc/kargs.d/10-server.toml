@@ -1,0 +1,3 @@
+# Kernel arguments for this host. Living here rather than in config.toml's
+# [customizations.kernel] means they apply on every bootc upgrade, not just at ISO install.
+kargs = ["mitigations=off", "workqueue.power_efficient=true"]

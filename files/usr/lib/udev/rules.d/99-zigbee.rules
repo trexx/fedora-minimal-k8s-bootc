@@ -1,0 +1,13 @@
+# Stable name for the Sonoff Zigbee 3.0 USB Dongle Plus (ITead, CP210x bridge).
+#
+# ttyUSB numbering follows enumeration order, so a reboot or re-plug can rename the dongle
+# and break the Zigbee2MQTT/ZHA config that points at it.
+#
+# 10c4:ea60 is the generic Silicon Labs CP210x UART Bridge ID, shared by a great many
+# devices -- matching on serial as well is what keeps a future CP210x adapter from racing
+# this rule for the same symlink.
+#
+# Note /dev/serial/by-id/usb-ITead_Sonoff_Zigbee_3.0_USB_Dongle_Plus_<serial>-if00-port0 is
+# already stable and works without this rule; /dev/zigbee is the shorter, model-independent
+# equivalent, so swapping dongles means editing this file rather than every workload.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", ATTRS{serial}=="6c5479f055c9eb11b6e98f4f1d69213e", SYMLINK+="zigbee", GROUP="dialout", MODE="0660", TAG+="systemd"

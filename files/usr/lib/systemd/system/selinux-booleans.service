@@ -1,0 +1,30 @@
+[Unit]
+Description=Set SELinux booleans for container device access
+Documentation=man:setsebool(8)
+After=local-fs.target
+ConditionSecurity=selinux
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Deliberately without -P. A persistent setsebool writes into the policy store under
+# /var/lib/selinux, which is per-machine state a bootc image cannot ship; setting the
+# runtime boolean each boot keeps this image-managed and rollback-safe.
+#
+# container_use_dri_devices is the narrow, GPU-specific boolean: it covers dri_device_t
+# (/dev/dri/card*, renderD*) and nothing else.
+ExecStart=/usr/sbin/setsebool container_use_dri_devices on
+
+# container_use_devices is the broad one, needed for the Zigbee USB dongle. A dongle
+# enumerates as usbtty_device_t (/dev/ttyUSB*) or tty_device_t (/dev/ttyACM*), neither of
+# which the DRI boolean covers. There is no serial-specific boolean in container-selinux,
+# so the alternatives are this or a custom policy module -- and a custom module would have
+# to be loaded at runtime anyway, since semodule writes to /var/lib/selinux, which a bootc
+# image does not ship. Accepting the wider grant: every workload on this node is ours.
+#
+# This supersedes the DRI line above, which is kept deliberately: if the dongle ever goes
+# away, dropping back to least privilege is a one-line deletion rather than a rewrite.
+ExecStart=/usr/sbin/setsebool container_use_devices on
+
+[Install]
+WantedBy=multi-user.target

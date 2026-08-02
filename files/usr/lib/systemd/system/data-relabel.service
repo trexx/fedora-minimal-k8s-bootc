@@ -1,0 +1,21 @@
+[Unit]
+Description=Apply container_file_t labels to /data
+Documentation=man:restorecon(8)
+# local-fs.target is reached once fstab mounts are done, so /data is up by here. Ordering
+# on it rather than Requires=data.mount means the unit skips quietly on a host without
+# /data instead of failing, which the condition below then enforces.
+After=local-fs.target
+ConditionSecurity=selinux
+ConditionPathIsMountPoint=/data
+# Relabelling ~1.6 TB is not something to repeat on every boot, which is what a
+# tmpfiles.d "Z" entry would do. Stamp it instead.
+ConditionPathExists=!/var/lib/.data-relabel-done
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/restorecon -R /data
+ExecStart=/usr/bin/touch /var/lib/.data-relabel-done
+
+[Install]
+WantedBy=multi-user.target

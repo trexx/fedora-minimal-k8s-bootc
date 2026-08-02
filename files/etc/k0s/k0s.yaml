@@ -1,0 +1,25 @@
+apiVersion: k0s.k0sproject.io/v1beta1
+kind: ClusterConfig
+metadata:
+  name: k0s
+spec:
+  workerProfiles:
+    - name: crio-cgroup-systemd
+      values:
+        cgroupDriver: systemd
+  api:
+    sans:
+    - 192.168.0.10
+  extensions:
+    storage:
+      create_default_storage_class: false
+      type: external_storage
+  network:
+    podCIDR: 10.244.0.0/24
+    kubeProxy:
+      disabled: true
+    provider: custom
+  storage:
+    type: etcd
+  telemetry:
+    enabled: false

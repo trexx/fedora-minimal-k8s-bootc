@@ -1,0 +1,11 @@
+[Unit]
+Description=Apply CPU, GPU and device power settings
+Documentation=file:///usr/libexec/power-tuning
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/power-tuning
+
+[Install]
+WantedBy=multi-user.target

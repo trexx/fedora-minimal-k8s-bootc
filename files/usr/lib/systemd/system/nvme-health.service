@@ -1,0 +1,8 @@
+[Unit]
+Description=Check NVMe drive health
+Documentation=man:nvme-smart-log(1)
+ConditionPathExistsGlob=/dev/nvme[0-9]
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nvme-health-check
