@@ -1,0 +1,74 @@
+name: Build image
+
+# Builds the bootc image exactly the way build.sh does locally, so CI and hand builds cannot
+# drift. Pull requests build, lint and rechunk but never push. Merges to master and the weekly
+# schedule publish :chunked, the tag the installed host upgrades from, so "bootc upgrade" on
+# the host keeps receiving Fedora updates without anyone running a build by hand.
+#
+# Publishing needs the ghcr.io package to grant this repository write access (package
+# settings, "Manage Actions access"); until then the push step fails with 403 and everything
+# before it still validates.
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  schedule:
+    - cron: '0 4 * * 0'   # Sunday 04:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: build-image
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      # The runner has no SELinux, so the container_runtime_t label build.sh uses locally means
+      # nothing there; "label=disable" is what CentOS's own bootc builds use on this runner.
+      PODMAN_SECURITY_OPT: label=disable
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Free disk space
+        # The base image, the builder rootfs, the final image and its rechunked copy all have
+        # to fit at once; the runner's preinstalled toolchains are the easiest 20+ GB to reclaim.
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Build image (bootc lint runs as its last step)
+        run: ./build.sh build
+
+      - name: Smoke test
+        # bootc must run, and everything shipped from files/ must be root-owned: the build
+        # copies the tree with --no-preserve=ownership, and this catches a regression of that.
+        run: |
+          image="${IMAGE:-ghcr.io/trexx/fedora-minimal-bootc}:latest"
+          sudo podman run --rm "$image" bootc --version
+          paths=$(cd files && find . -type f | sed 's|^\.||')
+          bad=$(sudo podman run --rm "$image" stat -c '%u:%g %n' $paths | grep -v '^0:0 ' || true)
+          if [ -n "$bad" ]; then
+            echo "files not owned by root:root in the image:" >&2
+            echo "$bad" >&2
+            exit 1
+          fi
+
+      - name: Rechunk
+        run: ./build.sh rechunk
+
+      - name: Push :chunked
+        if: github.event_name != 'pull_request'
+        env:
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$REGISTRY_TOKEN" | sudo podman login ghcr.io -u "$REGISTRY_USER" --password-stdin
+          ./build.sh push

@@ -38,6 +38,15 @@ Prerequisites: rootful podman (every step runs under `sudo`), `/dev/fuse`, and a
 
 `output/` is build output and is not tracked.
 
+### CI
+
+`.github/workflows/build.yml` runs `build.sh` on GitHub's hosted runner. Pull requests build, lint
+and rechunk without pushing; merges to `master` and a weekly schedule (Sunday 04:00 UTC) publish
+`:chunked`, so `bootc upgrade` on the host keeps receiving Fedora updates without a manual build.
+Publishing needs a one-time grant: in the `fedora-minimal-bootc` package's settings, under "Manage
+Actions access", add this repository with the Write role. `./build.sh iso` stays manual, since it
+needs the real SSH key and produces a 2 GB file.
+
 ## Install
 
 [`config.toml`](config.toml) carries the kickstart: UK keyboard, `en_GB`, Copenhagen time, hostname
