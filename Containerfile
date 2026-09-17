@@ -26,6 +26,8 @@ RUN --mount=type=bind,source=customize.sh,target=/tmp/customize.sh \
 # Define required labels for this bootc image to be recognized as such.
 LABEL containers.bootc 1
 LABEL ostree.bootable 1
+# Links the ghcr.io package to this repository.
+LABEL org.opencontainers.image.source="https://github.com/trexx/fedora-minimal-k8s-bootc"
 # https://pagure.io/fedora-kiwi-descriptions/pull-request/52
 ENV container=oci
 # Optional labels that only apply when running this image as a container. These keep the default entry point running under systemd.

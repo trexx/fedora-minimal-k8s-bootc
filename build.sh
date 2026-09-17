@@ -9,7 +9,8 @@
 #
 # Every step runs podman under sudo: the image build needs capabilities and /dev/fuse, and
 # rechunk and the ISO builder work on root's container storage. "sudo podman login ghcr.io"
-# is a prerequisite for push. IMAGE and FEDORA can be overridden in the environment.
+# is a prerequisite for push. IMAGE, FEDORA and PODMAN_SECURITY_OPT can be overridden in the
+# environment.
 set -euo pipefail
 
 IMAGE="${IMAGE:-ghcr.io/trexx/fedora-minimal-bootc}"
@@ -27,8 +28,10 @@ tty=()
 build() {
   # --pull=newer refreshes the fedora-bootc base each build; without it a cached base image
   # is reused indefinitely and "bootc upgrade" on the host never sees Fedora updates.
+  # The SELinux label lets the builder stage run rpm-ostree under the host's policy. It means
+  # nothing on a host without SELinux, such as the GitHub runner, where CI sets label=disable.
   sudo podman build --pull=newer --build-arg "FEDORA=${FEDORA}" \
-    --cap-add=all --security-opt=label=type:container_runtime_t --device /dev/fuse \
+    --cap-add=all --security-opt="${PODMAN_SECURITY_OPT:-label=type:container_runtime_t}" --device /dev/fuse \
     -t "${IMAGE}:latest" .
 }
 
