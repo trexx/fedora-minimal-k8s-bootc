@@ -5,6 +5,10 @@ Documentation=man:restorecon(8)
 # on it rather than Requires=data.mount means the unit skips quietly on a host without
 # /data instead of failing, which the condition below then enforces.
 After=local-fs.target
+# Pods must not write to /data before it carries the right label, or their files land
+# unlabelled and get denied. k0s orders after crio. The relabel only ever runs on the first
+# boot, when /data is still empty, so this ordering costs nothing.
+Before=crio.service
 ConditionSecurity=selinux
 ConditionPathIsMountPoint=/data
 # Relabelling ~1.6 TB is not something to repeat on every boot, which is what a

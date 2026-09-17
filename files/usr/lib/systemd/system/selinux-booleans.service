@@ -2,6 +2,9 @@
 Description=Set SELinux booleans for container device access
 Documentation=man:setsebool(8)
 After=local-fs.target
+# The booleans must be in place before the first pod starts, or anything touching /dev/dri
+# or the Zigbee dongle is denied until it is restarted. k0s itself orders after crio.
+Before=crio.service
 ConditionSecurity=selinux
 
 [Service]

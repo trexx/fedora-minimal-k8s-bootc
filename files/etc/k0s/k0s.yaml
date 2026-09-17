@@ -8,12 +8,12 @@ spec:
       values:
         cgroupDriver: systemd
   api:
+    # Extra SAN for the API server certificate. The host takes its address by DHCP
+    # (files/usr/lib/systemd/network/89-ethernet.network), so this has to be a reservation
+    # on the router: k0s also adds whatever address the host actually gets, but anything
+    # pointed at this one stops working if the lease ever changes.
     sans:
     - 192.168.0.10
-  extensions:
-    storage:
-      create_default_storage_class: false
-      type: external_storage
   network:
     podCIDR: 10.244.0.0/24
     kubeProxy:
