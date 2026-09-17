@@ -129,5 +129,6 @@ rm /var/{log,cache,lib}/* -rf
 rm -rf /run/* 2>/dev/null || true
 
 # Run the bootc linter to avoid encountering certain bugs and maintain content quality.
-# Place this as the final command.
-bootc container lint
+# Place this as the final command. Warnings are fatal: a lint that fires here fails the build
+# instead of surfacing on the host later.
+bootc container lint --fatal-warnings
