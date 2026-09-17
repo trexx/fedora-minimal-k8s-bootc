@@ -5,10 +5,14 @@ After=k0scontroller.service
 Requisite=k0scontroller.service
 # Skip quietly on a first boot where k0s has not yet laid down its PKI.
 ConditionPathExists=/var/lib/k0s/pki/apiserver-etcd-client.crt
+ConditionPathExists=/var/lib/k0s/pki/etcd/ca.crt
 
 [Service]
 Type=oneshot
+# k0s's etcd listens on loopback only and issues its own CA, so verify the server against
+# that CA rather than skipping verification.
 ExecStart=/usr/bin/etcdctl defrag --command-timeout=120s \
+  --endpoints=https://127.0.0.1:2379 \
+  --cacert=/var/lib/k0s/pki/etcd/ca.crt \
   --cert=/var/lib/k0s/pki/apiserver-etcd-client.crt \
-  --key=/var/lib/k0s/pki/apiserver-etcd-client.key \
-  --insecure-skip-tls-verify=true
+  --key=/var/lib/k0s/pki/apiserver-etcd-client.key

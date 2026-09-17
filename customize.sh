@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # Customizations applied to the fedora-minimal bootc image.
-# Invoked from the dockerfile via a bind mount, so this script is never part of the
+# Invoked from the Containerfile via a bind mount, so this script is never part of the
 # built image and does not need cleaning up afterwards. The config it installs lives
 # in the files/ tree, bind-mounted alongside it at /tmp/files.
 
 # Set pipefail to display failures within the script and avoid false-positive successful builds.
 set -xeuo pipefail
 
-# Pinned third-party binaries. k0s publishes a cosign .sig rather than a .sha256, so the
-# digest below was computed from the release asset and verified to report v1.36.3+k0s.0.
+# Pinned third-party binaries. When bumping, take the digests from the upstream checksum
+# files rather than computing them locally: sha256sums.txt on the k0s release page and
+# SHA256SUMS on the etcd one (k0s also ships a cosign .sig, which is not needed here).
 # etcdctl is pinned to the etcd version k0s actually embeds -- check "k0s version --all"
 # before bumping either, since a client newer than the server is a latent problem.
 K0S_VERSION="v1.36.3+k0s.0"
@@ -37,6 +38,10 @@ install -D -m0644 /tmp/files/etc/yum.repos.d/cri-o.repo /etc/yum.repos.d/cri-o.r
 # No tlp either: it is Perl and requires usbutils, which requires python3, so between them
 # perl-libs, python3-libs, hwdata and groff-base added ~80 MB. power-tuning.service writes
 # the same sysfs values with no dependencies at all -- see files/usr/libexec/power-tuning.
+#
+# lvm2 and cryptsetup serve the real root, not the initramfs: / is a plain partition (see the
+# kickstart in config.toml), while /var and /data are LVs inside a LUKS2 container that
+# systemd-cryptsetup unlocks and lvm2's udev rules activate after switch-root.
 dnf --setopt=install_weak_deps=False -y install \
   curl \
   vim-minimal \
@@ -55,51 +60,13 @@ dnf --setopt=install_weak_deps=False -y install \
   tar \
   util-linux
 
-# Regenerate the initramfs now that lvm2 and cryptsetup are installed.
-#
-# The base image builds its initramfs in the builder stage, before this script runs, so the
-# shipped one has "dm" and "crypt" but no "lvm" module -- it cannot activate the logical
-# volumes the kickstart puts / , /var and /data on, and bootc ships the image's initramfs
-# as-is. Without this the install drops to a dracut emergency shell.
-#
-# "--add ostree" mirrors what the base build does; regenerating without it breaks ostree
-# boot. lvm and crypt are named explicitly rather than left to autodetection so that a
-# future base change cannot quietly drop them again.
-kver=$(cd /usr/lib/modules && echo *)
-if [ ! -d "/usr/lib/modules/${kver}" ]; then
-  echo "Could not determine a single kernel version in /usr/lib/modules: ${kver}" >&2
-  exit 1
-fi
-# dracut-install tries to copy /root, which in a bootc image is a symlink to /var/roothome
-# -- a path that only exists at runtime, so the symlink dangles here and dracut errors out.
-# Provide it for the duration of the run, then remove it: /var content is per-machine and
-# the bootc linter rejects it in the image.
-mkdir -p /var/roothome
-dracut --force --reproducible --no-hostonly --kver "${kver}" \
-  --add ostree --add lvm --add crypt \
-  "/usr/lib/modules/${kver}/initramfs.img"
-rm -rf /var/roothome
-
-# dracut can report module-level failures and still exit 0, so confirm the result rather
-# than trusting the exit status. An initramfs without LVM cannot activate the root LV, and
-# that failure would only surface as an unbootable machine after a reinstall.
-#
-# lsinitrd prints the module list correctly but exits non-zero. Piping it into "grep -q"
-# under "set -o pipefail" therefore reports failure even when the module is present, and a
-# bare "$(...)" capture would abort the script under "set -e" -- hence "|| true", with the
-# result judged on content. Matching uses a here-string so no pipeline is involved at all.
-initramfs_mods=$(lsinitrd -m "/usr/lib/modules/${kver}/initramfs.img" 2>/dev/null || true)
-if [ -z "${initramfs_mods}" ]; then
-  echo "Could not read the dracut module list from the regenerated initramfs." >&2
-  exit 1
-fi
-for mod in lvm crypt ostree; do
-  if ! grep -qx "$mod" <<<"$initramfs_mods"; then
-    echo "Regenerated initramfs is missing the '${mod}' dracut module." >&2
-    printf '%s\n' "$initramfs_mods" >&2
-    exit 1
-  fi
-done
+# No initramfs regeneration. The base image's initramfs carries no lvm module, but / is a
+# plain xfs partition (see the kickstart in config.toml), which it boots as-is; the LUKS
+# container holding /var and /data is unlocked by systemd-cryptsetup and activated by lvm2's
+# udev rules in the real root. Should / ever move back onto LVM or LUKS, dracut has to be
+# re-run here with "--add ostree --add lvm --add crypt" (bootc ships the image's initramfs
+# unchanged), and the result checked with lsinitrd, since dracut can drop a module and still
+# exit 0.
 
 # Fetch k0s and etcdctl into /usr/bin. The upstream installer drops them in /usr/local/bin,
 # which on bootc is a symlink to /var/usrlocal -- writable and persistent, but outside image
@@ -117,8 +84,10 @@ tar -xzf /tmp/etcd.tar.gz -C /usr/bin --strip-components=1 --no-same-owner \
 rm -f /tmp/etcd.tar.gz
 
 # Lay down the config tree. This runs after the dnf install so our files win over
-# anything a package ships at the same path.
-cp -a /tmp/files/. /
+# anything a package ships at the same path. --no-preserve=ownership matters: the bind mount
+# carries the host checkout's uid/gid (the build is rootful, so nothing remaps it), and a
+# plain "cp -a" would bake that into the image. Modes and timestamps are still preserved.
+cp -a --no-preserve=ownership /tmp/files/. /
 
 authselect select local --force
 

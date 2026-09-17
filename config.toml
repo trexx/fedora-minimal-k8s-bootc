@@ -25,14 +25,28 @@ keyboard --vckeymap=gb --xlayouts='gb'
 lang en_GB.UTF-8
 timezone Europe/Copenhagen
 
-ostreecontainer --url=ghcr.io/trexx/fedora-minimal-bootc:chunked
+# The hostname doubles as the Kubernetes node name: k0s registers the node under it, and
+# changing it later means a new Node object. Set it here, before the first boot.
+network --hostname=k0s
+
+# No "ostreecontainer" line, deliberately. bootc-image-builder prepends its own base kickstart
+# (%include /run/install/repo/osbuild-base.ks), which installs the image embedded in the ISO
+# and then runs "bootc switch --mutate-in-place" so upgrades come from
+# ghcr.io/trexx/fedora-minimal-bootc:chunked. A second ostreecontainer here would win over
+# it and make Anaconda pull from the registry over the network instead of using the ISO.
 
 # No "firewall" line: firewalld is not in the minimal manifest, so there is nothing to
 # disable. No "services" line either -- every unit this host needs is enabled in the image.
 
-# Storage: one LUKS2 container holding the VG, so /var and /data are both encrypted behind
-# a single unlock. / stays outside it, since it holds the OS image (a public container)
-# while the secrets live in /var/lib/k0s.
+# Storage: / is a plain partition outside LUKS. It holds only the OS image, which is a public
+# container, and encrypting it would buy nothing without measured boot (the ESP and /boot are
+# open either way). One LUKS2 container holds the VG, so /var and /data are both encrypted
+# behind a single unlock. The only unencrypted state of note is /etc, i.e. the dropbear host
+# keys; every real secret lives under /var/lib/k0s or /data.
+#
+# Because / needs neither LVM nor LUKS, the stock initramfs boots it unmodified. The container
+# is unlocked by systemd in the real root (Anaconda writes /etc/crypttab), which is also where
+# the passphrase prompt appears: on the console, after the kernel and initramfs messages.
 #
 #   /      20G  -- ostree keeps the current and previous deployment plus staging space
 #   /var  200G  -- container graphroot, /var/lib/k0s (etcd), journal
@@ -45,10 +59,10 @@ clearpart --all --initlabel --drives=nvme0n1
 
 part /boot/efi --fstype=efi --ondisk=nvme0n1 --size=600 --fsoptions="umask=0077,shortname=winnt"
 part /boot --fstype=xfs --ondisk=nvme0n1 --size=1024
+part / --fstype=xfs --ondisk=nvme0n1 --size=20480
 part pv.01 --fstype=lvmpv --ondisk=nvme0n1 --size=1 --grow --encrypted --luks-version=luks2
 
 volgroup fedora pv.01
-logvol / --vgname=fedora --name=root --fstype=xfs --size=20480
 logvol /var --vgname=fedora --name=var --fstype=xfs --size=204800
 logvol /data --vgname=fedora --name=data --fstype=xfs --size=1 --grow
 
