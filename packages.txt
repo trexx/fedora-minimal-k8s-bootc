@@ -4,7 +4,7 @@
 #
 # Deliberately absent:
 #   systemd-resolved     already in Fedora's minimal manifest.
-#   systemd-timesyncd    no such package on F44 -- the binary ships in systemd-udev.
+#   systemd-timesyncd    no such package on F44 or F45 -- the binary ships in systemd-udev.
 #   systemd-oomd         this host has no swap and kubelet does its own eviction, so oomd
 #                        is disabled in the preset rather than given its defaults package.
 #   containernetworking-plugins

@@ -25,8 +25,8 @@ keyboard --vckeymap=gb --xlayouts='gb'
 lang en_GB.UTF-8
 timezone Europe/Copenhagen
 
-# No "ostreecontainer" line: bootc-image-builder generates its own, pointing at the copy of
-# the image embedded in the ISO, and %includes it ahead of this file. Its %post then runs
+# No "ostreecontainer" line: image-builder generates its own, pointing at the copy of the
+# image embedded in the ISO, and %includes it ahead of this file. Its %post then runs
 # "bootc switch" so upgrades track the registry image the ISO was built from.
 
 # No "firewall" line: firewalld is not in the minimal manifest, so there is nothing to

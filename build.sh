@@ -3,14 +3,20 @@
 # Uses rootful podman, so run it as root:
 #
 #   sudo ./build.sh [image|rechunk|iso|all]     (default: all)
+#
+# FEDORA_VERSION selects the release for both the image and the ISO's installer, e.g.
+#   sudo FEDORA_VERSION=45 ./build.sh image
 
 set -euo pipefail
 
+FEDORA_VERSION="${FEDORA_VERSION:-44}"
 IMAGE=ghcr.io/trexx/fedora-minimal-bootc
-BASE=quay.io/fedora/fedora-bootc:44
-# Pinned by digest rather than :latest. bootc-image-builder's sources have moved into
-# osbuild/image-builder; this is the last multi-arch image published here (2026-06-18).
-BIB=quay.io/centos-bootc/bootc-image-builder@sha256:2b52843ea2bfda73b0a08d97e76b734393b1d3a804681b9fabb26723bd3a2f0b
+BASE="quay.io/fedora/fedora-bootc:${FEDORA_VERSION}"
+INSTALLER="localhost/fedora-minimal-bootc-installer:${FEDORA_VERSION}"
+# Pinned by digest rather than :latest. This is image-builder, the successor to
+# bootc-image-builder, whose own image stopped updating in June 2026 and cannot build
+# Fedora 45 ISOs.
+IMAGE_BUILDER=ghcr.io/osbuild/image-builder-cli@sha256:572972c40aca8fae7568cfc11f242c3062f01584a327352a11ccfbc03bf087d2
 
 cd "$(dirname "$0")"
 
@@ -18,7 +24,7 @@ build_image() {
     # build-rootfs runs rpm-ostree inside the build, which needs the extra capabilities,
     # /dev/fuse and the container_runtime_t label.
     podman build --cap-add=all --security-opt=label=type:container_runtime_t --device /dev/fuse \
-        -t "$IMAGE:latest" -f dockerfile .
+        --build-arg FEDORA_VERSION="$FEDORA_VERSION" -t "$IMAGE:latest" -f dockerfile .
 }
 
 rechunk() {
@@ -37,14 +43,20 @@ rechunk() {
 }
 
 iso() {
-    # The kickstart in config.toml does the partitioning. The image embedded in the ISO is
-    # what gets installed; bootc-image-builder then points the install at $IMAGE:chunked
-    # in the registry for upgrades.
+    # A "bootc-installer" ISO is built from two containers: the installer environment from
+    # installer.dockerfile, which supplies Anaconda, and the payload image, which is
+    # embedded in the ISO and installed by the kickstart in config.toml. image-builder
+    # then points the install at $IMAGE:chunked in the registry for upgrades. Fedora
+    # bootc images declare no root filesystem type, hence --bootc-default-fs.
+    podman build --build-arg FEDORA_VERSION="$FEDORA_VERSION" -t "$INSTALLER" \
+        -f installer.dockerfile .
     mkdir -p output
     podman run --rm --privileged --security-opt label=type:unconfined_t \
         -v ./config.toml:/config.toml:ro -v ./output:/output \
         -v /var/lib/containers/storage:/var/lib/containers/storage \
-        "$BIB" --type anaconda-iso --rootfs xfs "$IMAGE:chunked"
+        "$IMAGE_BUILDER" build --bootc-ref "$INSTALLER" \
+        --bootc-installer-payload-ref "$IMAGE:chunked" --bootc-default-fs xfs \
+        --blueprint /config.toml --output-dir /output bootc-installer
 }
 
 case "${1:-all}" in

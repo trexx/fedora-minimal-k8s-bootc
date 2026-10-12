@@ -1,6 +1,10 @@
+# The Fedora release to build. build.sh passes FEDORA_VERSION so the image and the ISO's
+# installer environment always match; the default here is for building by hand.
+ARG FEDORA_VERSION=44
+
 # Pinned third-party binaries (k0s, etcdctl) are fetched in their own stage, so tar is not
 # needed in the final image and the downloads stay cached until fetch.sh changes.
-FROM quay.io/fedora/fedora-bootc:44 AS fetch
+FROM quay.io/fedora/fedora-bootc:${FEDORA_VERSION} AS fetch
 RUN --mount=type=bind,source=fetch.sh,target=/tmp/fetch.sh \
     bash /tmp/fetch.sh /out
 
@@ -16,7 +20,7 @@ RUN --mount=type=bind,source=fetch.sh,target=/tmp/fetch.sh \
 # This stage depends only on packages.txt and the repo file, so editing anything else
 # under files/ does not re-run it. The cache mount keeps repo metadata and RPMs between
 # builds.
-FROM quay.io/fedora/fedora-bootc:44 AS builder
+FROM quay.io/fedora/fedora-bootc:${FEDORA_VERSION} AS builder
 COPY files/etc/yum.repos.d/cri-o.repo /etc/yum.repos.d/cri-o.repo
 RUN --mount=type=bind,source=packages.txt,target=/tmp/packages.txt \
     --mount=type=cache,target=/var/cache/bootc-rootfs \
