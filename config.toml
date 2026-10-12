@@ -25,18 +25,24 @@ keyboard --vckeymap=gb --xlayouts='gb'
 lang en_GB.UTF-8
 timezone Europe/Copenhagen
 
-ostreecontainer --url=ghcr.io/trexx/fedora-minimal-bootc:chunked
+# No "ostreecontainer" line: bootc-image-builder generates its own, pointing at the copy of
+# the image embedded in the ISO, and %includes it ahead of this file. Its %post then runs
+# "bootc switch" so upgrades track the registry image the ISO was built from.
 
 # No "firewall" line: firewalld is not in the minimal manifest, so there is nothing to
 # disable. No "services" line either -- every unit this host needs is enabled in the image.
 
-# Storage: one LUKS2 container holding the VG, so /var and /data are both encrypted behind
-# a single unlock. / stays outside it, since it holds the OS image (a public container)
-# while the secrets live in /var/lib/k0s.
+# Storage: one LUKS2 container holding the VG, so /, /var and /data are all encrypted
+# behind a single unlock. Because / is inside it, the initramfs unlocks it at boot -- the
+# image's initramfs carries the crypt, lvm and tpm2-tss dracut modules for this.
 #
 #   /      20G  -- ostree keeps the current and previous deployment plus staging space
 #   /var  200G  -- container graphroot, /var/lib/k0s (etcd), journal
 #   /data rest  -- host-provisioned PVC storage
+#
+# /data is mounted with a fixed SELinux context, so every file on it is container_file_t
+# without a relabel ever being needed -- containers cannot read their volumes under
+# enforcing SELinux otherwise. This replaces a one-shot restorecon of the whole tree.
 #
 # --passphrase is intentionally omitted so Anaconda prompts during the interactive install.
 # Do not hardcode one here; this file is in version control.
@@ -50,7 +56,11 @@ part pv.01 --fstype=lvmpv --ondisk=nvme0n1 --size=1 --grow --encrypted --luks-ve
 volgroup fedora pv.01
 logvol / --vgname=fedora --name=root --fstype=xfs --size=20480
 logvol /var --vgname=fedora --name=var --fstype=xfs --size=204800
-logvol /data --vgname=fedora --name=data --fstype=xfs --size=1 --grow
+logvol /data --vgname=fedora --name=data --fstype=xfs --size=1 --grow --fsoptions="context=system_u:object_r:container_file_t:s0"
+
+# To unlock without typing the passphrase on every boot, enrol the TPM after install:
+#   systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=7 /dev/nvme0n1pN   (the LUKS partition; see lsblk)
+# PCR 7 measures the Secure Boot state, which bootc kernel updates leave unchanged.
 
 # Root has no password: access is by key over dropbear, which reads ~/.ssh/authorized_keys
 # the same way OpenSSH does. REPLACE THE KEY BELOW BEFORE BUILDING AN ISO -- with the

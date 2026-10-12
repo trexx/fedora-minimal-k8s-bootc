@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Cap the frequency of an i915 GPU. Run by /usr/lib/udev/rules.d/80-power.rules with the
+# sysfs path of the GPU's PCI device.
+#
+# This caps the iGPU at 750 MHz, which also throttles hardware transcode and ML inference.
+# That is the deliberate power-over-throughput trade-off; raise MAX_MHZ to undo it.
+
+set -uo pipefail
+
+MIN_MHZ=200
+MAX_MHZ=750
+
+for card in "$1"/drm/card*; do
+    [ -e "$card/gt_max_freq_mhz" ] || continue
+    # min goes first: it is below any plausible current max, so it cannot be rejected for
+    # inverting the range.
+    echo "$MIN_MHZ" > "$card/gt_min_freq_mhz"
+    echo "$MAX_MHZ" > "$card/gt_max_freq_mhz"
+    echo "$MAX_MHZ" > "$card/gt_boost_freq_mhz"
+done

@@ -1,0 +1,48 @@
+# Packages added on top of the "minimal" manifest. The dockerfile turns each entry into a
+# bootc-base-imagectl "--install" argument; "#" starts a comment. Weak dependencies are
+# never pulled in -- the minimal manifest sets "recommends: false".
+#
+# Deliberately absent:
+#   systemd-resolved     already in Fedora's minimal manifest.
+#   systemd-timesyncd    no such package on F44 -- the binary ships in systemd-udev.
+#   systemd-oomd         this host has no swap and kubelet does its own eviction, so oomd
+#                        is disabled in the preset rather than given its defaults package.
+#   containernetworking-plugins
+#                        Cilium supplies its own CNI binary.
+#   curl, tar            only needed to fetch k0s and etcdctl, which happens in the
+#                        dockerfile's fetch stage.
+#   smartmontools        pulls smartmontools-selinux via a rich dependency, which drags in
+#                        policycoreutils-python-utils and ~55 MB of Python. This box is
+#                        NVMe-only; nvme-health.timer replaces smartd -- see files/usr/libexec.
+#   tlp                  Perl, and requires usbutils, which requires python3 -- ~80 MB between
+#                        them. The same sysfs values are set by power.conf (tmpfiles.d) and
+#                        80-power.rules (udev) with no dependencies at all.
+
+# Container runtime. cri-o comes from the upstream repo in files/etc/yum.repos.d.
+cri-o
+crun
+
+# Networking and remote access. Not every use case wants SSH, so minimal has none.
+systemd-networkd
+dropbear
+
+# Storage. The kickstart puts /, /var and /data on LVM inside LUKS, so the initramfs needs
+# the lvm and crypt dracut modules -- which it gets automatically because these are
+# installed before it is generated.
+lvm2
+cryptsetup
+# fstrim.timer lives here, not in util-linux-core.
+util-linux
+
+# Hardware.
+thermald
+nvme-cli
+# i915/xe DMC, GuC and HuC firmware. Without DMC the iGPU cannot reach its deeper power
+# states, which also holds the package out of deep C-states; HuC is needed for some
+# hardware encode modes. The kernel only Recommends firmware, so minimal ships none.
+intel-gpu-firmware
+
+# Admin and SELinux tooling. policycoreutils provides setsebool for selinux-booleans.service.
+vim-minimal
+authselect
+policycoreutils
