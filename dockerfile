@@ -1,5 +1,5 @@
-# Pinned third-party binaries (k0s, etcdctl) are fetched in their own stage, so curl and
-# tar never reach the final image and the downloads stay cached until fetch.sh changes.
+# Pinned third-party binaries (k0s, etcdctl) are fetched in their own stage, so tar is not
+# needed in the final image and the downloads stay cached until fetch.sh changes.
 FROM quay.io/fedora/fedora-bootc:44 AS fetch
 RUN --mount=type=bind,source=fetch.sh,target=/tmp/fetch.sh \
     bash /tmp/fetch.sh /out

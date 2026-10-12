@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fetch the pinned third-party binaries into the directory given as $1.
-# Runs in the dockerfile's fetch stage, so curl and tar are needed only there, and the
-# result is cached until this file changes. The final stage copies the binaries into
+# Runs in the dockerfile's fetch stage, so tar is needed only there, and the result is
+# cached until this file changes. The final stage copies the binaries into
 # /usr/bin: /usr/local would also be image content on current Fedora bootc bases, but
 # /usr/bin keeps them alongside everything else the image manages.
 

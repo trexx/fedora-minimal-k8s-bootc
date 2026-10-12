@@ -9,8 +9,9 @@
 #                        is disabled in the preset rather than given its defaults package.
 #   containernetworking-plugins
 #                        Cilium supplies its own CNI binary.
-#   curl, tar            only needed to fetch k0s and etcdctl, which happens in the
-#                        dockerfile's fetch stage.
+#   curl                 pulled in by the minimal manifest's own dependencies.
+#   tar                  only needed to unpack etcdctl, which happens in the dockerfile's
+#                        fetch stage.
 #   smartmontools        pulls smartmontools-selinux via a rich dependency, which drags in
 #                        policycoreutils-python-utils and ~55 MB of Python. This box is
 #                        NVMe-only; nvme-health.timer replaces smartd -- see files/usr/libexec.

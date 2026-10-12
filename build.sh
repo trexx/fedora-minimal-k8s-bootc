@@ -28,7 +28,7 @@ rechunk() {
     # command over to the result. chunkah's default of 64 layers is low for a bootable
     # image, hence 128.
     local loaded
-    loaded=$(podman run --rm --mount=type=image,src="$IMAGE:latest",dest=/chunkah \
+    loaded=$(podman run --rm --mount=type=image,source="$IMAGE:latest",target=/chunkah \
             -e CHUNKAH_CONFIG_STR="$(podman inspect "$IMAGE:latest")" \
             "$BASE" /usr/libexec/bootc-base-imagectl rechunk --chunkah --max-layers 128 \
         | podman load -q)
