@@ -9,6 +9,7 @@ ConditionPathExists=/var/lib/k0s/pki/apiserver-etcd-client.crt
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/etcdctl defrag --command-timeout=120s \
+  --endpoints=https://127.0.0.1:2379 \
+  --cacert=/var/lib/k0s/pki/etcd/ca.crt \
   --cert=/var/lib/k0s/pki/apiserver-etcd-client.crt \
-  --key=/var/lib/k0s/pki/apiserver-etcd-client.key \
-  --insecure-skip-tls-verify=true
+  --key=/var/lib/k0s/pki/apiserver-etcd-client.key

@@ -1,0 +1,32 @@
+# Device power settings this host previously got from TLP. udev rather than a boot-time
+# script, so a device that appears late or is hotplugged gets the same treatment as one
+# present at boot. CPU-wide settings are in /usr/lib/tmpfiles.d/power.conf.
+
+ACTION!="add|bind", GOTO="power_end"
+
+# RUNTIME_PM_ON_AC=auto, which also covers AHCI_RUNTIME_PM_ON_AC.
+SUBSYSTEM=="pci", ACTION=="add", ATTR{power/control}="auto"
+
+# USB_AUTOSUSPEND=1 plus the USB_DENYLIST entries. The devices below stay powered on:
+# autosuspending a serial adapter or a remote-console device breaks it in ways that look
+# like flaky hardware rather than a power setting, so these are opt-out, not opt-in. They
+# are set explicitly to "on", not merely skipped, so a change in kernel default cannot
+# suspend them. Interfaces (1-1:1.0) are DEVTYPE usb_interface and are not matched.
+SUBSYSTEM!="usb", GOTO="power_usb_end"
+ACTION!="add", GOTO="power_usb_end"
+ENV{DEVTYPE}!="usb_device", GOTO="power_usb_end"
+# Sonoff Zigbee 3.0 USB Dongle Plus (Silicon Labs CP210x)
+ATTR{idVendor}=="10c4", ATTR{idProduct}=="ea60", ATTR{power/control}="on", GOTO="power_usb_end"
+# Sipeed NanoKVM -- suspending it would break the remote console
+ATTR{idVendor}=="3346", ATTR{idProduct}=="1009", ATTR{power/control}="on", GOTO="power_usb_end"
+ATTR{power/control}="auto"
+LABEL="power_usb_end"
+
+# INTEL_GPU_{MIN,MAX,BOOST}_FREQ_ON_AC. i915 creates the gt_*_freq_mhz files only after
+# the card's "add" uevent, so match the PCI device instead: "bind" arrives once probe
+# (and with it sysfs registration) has finished, and "add" covers coldplug of a device
+# that was already bound, e.g. in the initramfs. The newer xe driver uses different
+# sysfs paths and is not handled.
+SUBSYSTEM=="pci", DRIVER=="i915", RUN+="/usr/libexec/gpu-freq-cap %S%p"
+
+LABEL="power_end"

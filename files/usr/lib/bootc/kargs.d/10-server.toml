@@ -1,3 +1,6 @@
 # Kernel arguments for this host. Living here rather than in config.toml's
 # [customizations.kernel] means they apply on every bootc upgrade, not just at ISO install.
-kargs = ["mitigations=off", "workqueue.power_efficient=true"]
+#
+# pcie_aspm.policy replaces PCIE_ASPM_ON_AC=powersupersave from the old TLP config. It only
+# takes effect where firmware grants the OS ASPM control, as it does on this host.
+kargs = ["mitigations=off", "workqueue.power_efficient=true", "pcie_aspm.policy=powersupersave"]
