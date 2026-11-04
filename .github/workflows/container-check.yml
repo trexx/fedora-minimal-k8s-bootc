@@ -1,0 +1,17 @@
+name: 'Container check'
+
+# hadolint on every Dockerfile, and a build of the image(s) without pushing them.
+
+on:
+  pull_request:
+  push:
+    branches: [ 'main' ]
+
+jobs:
+  check:
+    uses: 'trexx/actions/.github/workflows/container-check.yml@main'
+    permissions:
+      contents: 'read'
+    with:
+      # A bootc build needs privileged podman (see build.txt), so this only lints.
+      build_contexts: '[]'
